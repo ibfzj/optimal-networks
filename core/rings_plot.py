@@ -260,7 +260,7 @@ def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500):
     ax.set_xlabel(r"$\gamma$")
     ax.set_ylabel(r"$k_e^\ast$")
 
-    ax.plot([], [], color=color_brk, lw=2.0, label="symmetry broken")
+    ax.plot([], [], color=color_brk, lw=2.0, label="symmetry-broken")
     ax.plot([], [], color=color_sym, lw=2.0, label="symmetric")
 
     ax.legend(frameon=True, loc="upper left", fontsize=12)
