@@ -1,5 +1,5 @@
 This repository contains code and data used for obtaining numerical results for the publication
-# Symmetry breaking in minimum-dissipation networks
+# Symmetry breaking in minimum dissipation networks
 by Aarathi Parameswaran, Andrea Benigni, Dirk Witthaut, and Iva Bačić.
 
 We consider optimal transport networks under stochastic load fluctuations, including ring networks, multilayer networks, and an application to renewable energy systems.
