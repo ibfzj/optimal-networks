@@ -13,6 +13,8 @@ multilayer_1.ipynb computes and visualizes optimal structures in simple multilay
 
 multilayer_2.ipynb computes and visualizes optimal structures in extended multilayer (cube-like) networks.
 
+multilayer_3.ipynb computes and visualizes optimal structures in extended multilayer (cube-like) networks. 
+
 The multilayer results are sensitive to initialization and branch selection in multistable regions, especially the extended ones.
 
 The provided pipeline reproduces the results shown in the associated work.
