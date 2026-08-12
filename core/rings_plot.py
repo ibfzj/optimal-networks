@@ -1,11 +1,11 @@
 import numpy as np
 import networkx as nx
-import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from matplotlib.ticker import ScalarFormatter
 from scipy.signal import argrelextrema
 
-from .rings_calc import build_ring_graph, compute_ring_second_moment_matrix, D_of_a_N2, global_optimum_N2_piecewise, kvec_N3_from_ab, expected_dissipation_ring, meaningful_minima_N3, global_candidates_from_minima, build_weighted_ring_graph_from_kvec
+from .rings_calc import build_ring_graph, compute_ring_second_moment_matrix, D_of_a_N2, global_optimum_N2_piecewise, kvec_N3_from_ab, expected_dissipation_ring, meaningful_minima_N3, global_candidates_from_minima, build_weighted_ring_graph_from_kvec, kvec_N2_mu0_broken, k_symmetric
 from .corson_algorithm import random_minimum
 
 class ScalarFormatterOneDecimal(ScalarFormatter):
@@ -26,8 +26,13 @@ def minima_indices(y, include_endpoints=True):
             idx.append(len(y) - 1)
     return sorted(set(idx))
 
-def mark_minima(ax, x, y, rtol=1e-10):
-    """Mark local and global minima of a 1D curve on an existing axis."""
+def mark_minima(ax, x, y, rtol=1e-10, s_circle=220, s_cross=140, lw=1.0):
+    """Mark local and global minima of a 1D curve on an existing axis.
+
+    Local minima use the same yellow fill as the boundary minima drawn by
+    plot_Figure3, so that the shared legend applies to every panel of the
+    merged ring figure.
+    """
     x = np.asarray(x)
     y = np.asarray(y)
 
@@ -42,16 +47,19 @@ def mark_minima(ax, x, y, rtol=1e-10):
     global_idx = [i for i in idx if abs(y[i] - y_min) <= tol]
     local_only = [i for i in idx if i not in global_idx]
 
-    # local (non-global): hollow circles
+    # Minima sitting exactly on the domain boundary would otherwise be sliced in
+    # half by the spine, so they are drawn unclipped.
+    # local (non-global): filled circle only
     if local_only:
-        ax.scatter(x[local_only], y[local_only], marker="o", s=220, facecolors="none", edgecolors="k", linewidths=1, zorder=20)
+        ax.scatter(x[local_only], y[local_only], marker="o", s=s_circle, facecolors="yellow", edgecolors="black", linewidths=lw, zorder=20, clip_on=False)
 
-    # global: x + hollow circle around it
-    ax.scatter(x[global_idx], y[global_idx], marker="x", s=140, c="black", linewidths=1, zorder=23)
-    ax.scatter(x[global_idx], y[global_idx], marker="o", s=220, facecolors="yellow", edgecolors="black", linewidths=1, zorder=22)
-    
+    # global: x on top of a filled circle
+    ax.scatter(x[global_idx], y[global_idx], marker="o", s=s_circle, facecolors="yellow", edgecolors="black", linewidths=lw, zorder=22, clip_on=False)
+    ax.scatter(x[global_idx], y[global_idx], marker="x", s=s_cross, c="black", linewidths=lw, zorder=23, clip_on=False)
 
-def plot_dissipation_N2(gammas, mu=0.0, beta=0.1, kappa=1.0, ax=None, legend_elements=None):
+
+def plot_dissipation_N2(gammas, mu=0.0, beta=0.1, kappa=1.0, ax=None, legend_elements=None,
+                        lw=2.0, s_circle=220, s_cross=140, marker_lw=1.0, legend_loc="center"):
     """Plot the N=2 dissipation as a function of the reduced variable a for selected gamma values."""
     colors = ["#003366", "#E69F00"]
     if ax is None:
@@ -63,23 +71,28 @@ def plot_dissipation_N2(gammas, mu=0.0, beta=0.1, kappa=1.0, ax=None, legend_ele
 
         D_vals = np.array([D_of_a_N2(a, gamma, mu, beta, kappa=kappa) for a in a_vals])
 
-        ax.plot(a_vals, D_vals, label=fr"$\gamma={gamma}$", lw=2, color=colors[i], zorder=1)
+        ax.plot(a_vals, D_vals, label=fr"$\gamma={gamma}$", lw=lw, color=colors[i], zorder=1)
 
-        mark_minima(ax, a_vals, D_vals)
+        mark_minima(ax, a_vals, D_vals, s_circle=s_circle, s_cross=s_cross, lw=marker_lw)
 
     ax.set_xlabel(r"$k_1$")
     ax.set_ylabel(r"$\bar D$")
 
     if legend_elements is not None:
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles + legend_elements, labels + ['Local min', 'Global min'], loc = 'center')
+        ax.legend(handles + legend_elements, labels + ['Local min', 'Global min'], loc=legend_loc)
     else:
-        ax.legend(loc = 'upper right')
+        ax.legend(loc='upper right')
 
     return ax
 
-def plot_fig2b_N2(gamma_vals, kappa=1.0, ax = None):
-    """Plot the analytic N=2 optimal capacities as a function of gamma."""
+def plot_fig2b_N2(gamma_vals, kappa=1.0, ax=None, lw_thick=4.0, lw_thin=2.0, legend_loc="lower right"):
+    """Plot the analytic N=2 optimal capacities as a function of gamma.
+
+    Where the two branches coincide (gamma > 1 they are equal) the orange curve
+    is drawn thicker than the navy one so that both remain visible; this is a
+    drawing device, not a difference in the underlying values.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 3))
     k1 = []
@@ -97,21 +110,33 @@ def plot_fig2b_N2(gamma_vals, kappa=1.0, ax = None):
     mask_right = g > 1.0
 
     # left branch (gamma < 1)
-    ax.plot(g[mask_left],  k1[mask_left],  color="#E69F00", linewidth=4, label=r"$k_1^*=k_2^*$")
-    ax.plot(g[mask_left],  k3[mask_left],  color="#003366", linewidth=2, label=r"$k_3^*=k_4^*$")
+    ax.plot(g[mask_left],  k1[mask_left],  color="#E69F00", linewidth=lw_thick, label=r"$k_1^*=k_2^*$")
+    ax.plot(g[mask_left],  k3[mask_left],  color="#003366", linewidth=lw_thin, label=r"$k_3^*=k_4^*$")
 
     # right branch (gamma > 1)
-    ax.plot(g[mask_right], k3[mask_right], color="#E69F00", linewidth=4)
-    ax.plot(g[mask_right], k1[mask_right], color="#003366", linewidth=2)
+    ax.plot(g[mask_right], k3[mask_right], color="#E69F00", linewidth=lw_thick)
+    ax.plot(g[mask_right], k1[mask_right], color="#003366", linewidth=lw_thin)
 
     ax.set_xlabel(r"$\gamma$")
     ax.set_ylabel(r"$k_e^*$")
-    ax.legend(loc="lower right")
+    ax.legend(loc=legend_loc)
 
 # === Figure 3 ===
 
-def plot_Figure3(gamma, mu, beta, kappa=1.0, grid=260, ax=None):
-    """Plot the reduced N=3 dissipation and mark its relevant minima."""
+def plot_Figure3(gamma, mu, beta, kappa=1.0, grid=260, ax=None, cax=None,
+                 label_above=False, cbar_labelsize=None, s_circle=260, s_cross=140,
+                 marker_lw=2.0, gamma_label_xy=(0.12, 0.95), minima_grid=None,
+                 aspect="auto"):
+    """Plot the reduced N=3 dissipation and mark its relevant minima.
+
+    With label_above=True the colour bar is titled above the bar rather than
+    alongside it. That is what keeps the ln(D) label clear of the neighbouring
+    panel's y-axis label when the three panels sit side by side.
+
+    The heat map is rasterised into the vector PDF, so `grid` sets its
+    resolution: it must be large enough to reach 300 dpi at the final printed
+    panel width (see figstyle for the physical sizes).
+    """
     if ax is None:
         fig, ax = plt.subplots()
 
@@ -133,11 +158,37 @@ def plot_Figure3(gamma, mu, beta, kappa=1.0, grid=260, ax=None):
             D[i, j] = expected_dissipation_ring(N, k, Sigma)
             
     # Plot heatmap of dissipation
-    im = ax.imshow(np.log(D).T, origin="lower", aspect="auto", extent=[a_vals[0], a_vals[-1], b_vals[0], b_vals[-1]])
-    plt.colorbar(im, ax=ax, label=r"$ln(\bar D)$")
+    with np.errstate(invalid="ignore"):
+        logD = np.log(D)
 
-    # Compute minima (interior + boundaries)
-    interior_min, boundary_mins = meaningful_minima_N3(gamma, mu, beta, kappa=kappa, n_grid=grid, eps_frac=0.01)
+    im = ax.imshow(logD.T, origin="lower", aspect=aspect, interpolation="nearest",
+                   extent=[a_vals[0], a_vals[-1], b_vals[0], b_vals[-1]])
+
+    # "ln" is a multi-letter function, so it must be roman rather than italic.
+    cbar_label = r"$\ln(\bar D)$"
+    fig = ax.get_figure()
+
+    if cax is not None:
+        cbar = fig.colorbar(im, cax=cax)
+    else:
+        cbar = fig.colorbar(im, ax=ax)
+
+    if label_above:
+        cbar.ax.set_title(cbar_label, fontsize=cbar_labelsize, pad=3)
+    else:
+        cbar.set_label(cbar_label, fontsize=cbar_labelsize)
+
+    if cbar_labelsize is not None:
+        cbar.ax.tick_params(labelsize=cbar_labelsize)
+
+    # Compute minima (interior + boundaries). This search is a separate, much
+    # more expensive scan than the heat map, so its resolution is decoupled from
+    # `grid`: the heat map needs a fine grid to satisfy the 300 dpi rule, the
+    # minima do not.
+    if minima_grid is None:
+        minima_grid = grid
+
+    interior_min, boundary_mins = meaningful_minima_N3(gamma, mu, beta, kappa=kappa, n_grid=minima_grid, eps_frac=0.01)
 
     candidates = []
     if interior_min is not None:
@@ -145,43 +196,42 @@ def plot_Figure3(gamma, mu, beta, kappa=1.0, grid=260, ax=None):
     for key, (a_m, b_m, D_m) in boundary_mins.items():
         candidates.append((key, a_m, b_m, D_m))
 
-    best = min(candidates, key=lambda t: t[3])
-    _, a_g, b_g, _ = best
-
-    # Markers
+    # Markers. These minima lie on the boundary of the feasible domain, so they
+    # are drawn unclipped to stop the spines slicing them in half.
     # Boundary minima: yellow filled circles with black edge
     if gamma < 1: # we analytically showed this
         for (a_b, b_b, D_b) in boundary_mins.values():
-            ax.scatter([a_b], [b_b], marker="o", s=260, facecolors="yellow", edgecolors="black", linewidths=2.0, zorder=9)
+            ax.scatter([a_b], [b_b], marker="o", s=s_circle, facecolors="yellow", edgecolors="black", linewidths=marker_lw, zorder=9, clip_on=False)
 
-    # Interior minimum (if exists): hollow circle
+    # Interior minimum (if exists)
     if interior_min is not None:
         a_i, b_i, D_i = interior_min
-        ax.scatter([a_i], [b_i], marker="o", s=260, facecolors="yellow", edgecolors="black", linewidths=2.0, zorder=10)
+        ax.scatter([a_i], [b_i], marker="o", s=s_circle, facecolors="yellow", edgecolors="black", linewidths=marker_lw, zorder=10, clip_on=False)
 
     globals_ = global_candidates_from_minima(candidates, use_log=True, atol_log=5e-3)
 
     for tag, a_g, b_g, D_g in globals_:
-        ax.scatter([a_g], [b_g], marker="x", s=140, c="black", linewidths=3.0, zorder=11)
-
-    ax.scatter([a_g], [b_g], marker="x", s=140, c="black", linewidths=3.0, zorder=11)
+        ax.scatter([a_g], [b_g], marker="x", s=s_cross, c="black", linewidths=marker_lw, zorder=11, clip_on=False)
 
     ax.set_xlabel(r"$k_1=k_2$")
     ax.set_ylabel(r"$k_3=k_4$")
-    ax.text(0.12, 0.95, rf"$\gamma={gamma}$", transform=ax.transAxes, ha="left", va="top")
+    # fixed to two decimals so the three panels do not mix 0.55, 0.6 and 1.05
+    ax.text(gamma_label_xy[0], gamma_label_xy[1], rf"$\gamma={gamma:.2f}$",
+            transform=ax.transAxes, ha="left", va="top")
     return ax
 
 # Insets for Fig 3
-def add_ring_inset(ax, kvec, bounds, color="white", edge_scale=8, node_size=300):
+def add_ring_inset(ax, kvec, bounds, color="white", edge_scale=8, node_size=300, lw_scale=1.0):
     """Add a weighted ring inset at a specified position in axis coordinates:
     bounds = [x0, y0, w, h] in ax.transAxes coordinates.
     """
     iax = ax.inset_axes(bounds, transform=ax.transAxes)
     G = build_weighted_ring_graph_from_kvec(kvec)
-    draw_ring_inset(G, iax, color=color, node_size=node_size, edge_scale=edge_scale)
+    draw_ring_inset(G, iax, color=color, node_size=node_size, edge_scale=edge_scale, lw_scale=lw_scale)
     return iax
 
-def add_insets_to_Figure3(ax, gamma, kappa=1.0):
+def add_insets_to_Figure3(ax, gamma, kappa=1.0, node_size=180, edge_scale=5, lw_scale=1.0,
+                          bounds=None):
     """
     Places representative insets in panels of Figure 3.
     Bounds are [x0, y0, w, h] in axes coordinates.
@@ -209,18 +259,25 @@ def add_insets_to_Figure3(ax, gamma, kappa=1.0):
 
     if gamma < gc:
         # gamma=0.55: global broken, local symmetric
-        add_ring_inset(ax, k_brk, bounds=[0.62, 0.5, 0.23, 0.23], color="black", edge_scale=5, node_size=180)
+        default_bounds = [0.62, 0.5, 0.23, 0.23]
+        kvec = k_brk
     elif gamma < gb:
         # gamma=0.60: global symmetric, local broken
-        add_ring_inset(ax, k_sym, bounds=[0.60, 0.5, 0.23, 0.23], color="black", edge_scale=5, node_size=180)
+        default_bounds = [0.60, 0.5, 0.23, 0.23]
+        kvec = k_sym
     else:
         # gamma=1.05: only symmetric local/global minimum
-        add_ring_inset(ax, k_sym, bounds=[0.58, 0.5, 0.24, 0.24], color="black", edge_scale=5, node_size=180)
+        default_bounds = [0.58, 0.5, 0.24, 0.24]
+        kvec = k_sym
+
+    add_ring_inset(ax, kvec, bounds=default_bounds if bounds is None else bounds,
+                   color="black", edge_scale=edge_scale, node_size=node_size, lw_scale=lw_scale)
 
 # === Figure 4 ===
 
-def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500):
-    """Plot the analytic N=3 branch diagram showing global and local minima versus gamma."""    
+def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500,
+                 lw=2.5, guide_lw=1.0, legend_fontsize=12, legend_loc="upper left"):
+    """Plot the analytic N=3 branch diagram showing global and local minima versus gamma."""
     if ax is None:
         fig, ax = plt.subplots(figsize=(6.2, 4.0))
 
@@ -245,36 +302,53 @@ def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500):
 
     # Symmetry-broken branch: k1*=k3*=x, k2*=0
     # solid for global (g < gc), dashed for local (gc < g < 1)
-    ax.plot(g_left, kbrk_left, color=color_brk, lw=2.5)
-    ax.plot(g_left, np.zeros_like(g_left), color=color_brk, lw=2.5)
+    ax.plot(g_left, kbrk_left, color=color_brk, lw=lw)
+    ax.plot(g_left, np.zeros_like(g_left), color=color_brk, lw=lw)
 
-    ax.plot(g_mid, kbrk_mid, color=color_brk, lw=2.5, ls=(4, (4, 3)))
-    ax.plot(g_mid, np.zeros_like(g_mid), color=color_brk, lw=2.5, ls=(4, (4, 3)))
+    ax.plot(g_mid, kbrk_mid, color=color_brk, lw=lw, ls=(4, (4, 3)))
+    ax.plot(g_mid, np.zeros_like(g_mid), color=color_brk, lw=lw, ls=(4, (4, 3)))
 
     # Symmetric branch: k1*=k2*=k3*=y
     # dashed for local (g < gc), solid for global (g > gc)
-    ax.plot(g_left, ksym_left, color=color_sym, lw=2.5, ls="--")
-    ax.plot(np.linspace(gc, gamma_max, n), k_sym_N3(np.linspace(gc, gamma_max, n), kappa), color=color_sym, lw=2.5)
+    ax.plot(g_left, ksym_left, color=color_sym, lw=lw, ls="--")
+    ax.plot(np.linspace(gc, gamma_max, n), k_sym_N3(np.linspace(gc, gamma_max, n), kappa), color=color_sym, lw=lw)
 
     # Labels and style
     ax.set_xlabel(r"$\gamma$")
     ax.set_ylabel(r"$k_e^\ast$")
 
-    ax.plot([], [], color=color_brk, lw=2.0, label="symmetry-broken")
-    ax.plot([], [], color=color_sym, lw=2.0, label="symmetric")
+    ax.plot([], [], color=color_brk, lw=lw, label="symmetry-broken")
+    ax.plot([], [], color=color_sym, lw=lw, label="symmetric")
 
-    ax.legend(frameon=True, loc="upper left", fontsize=12)
+    ax.legend(frameon=True, loc=legend_loc, fontsize=legend_fontsize)
 
     ax.set_xlim(gamma_min, gamma_max)
-    ax.set_ylim(-0.02, 1.05 * max(k_brk_N3(gamma_min, kappa), k_sym_N3(gamma_max, kappa)))
-    ax.axvline(1.0, linestyle="dashdot", color = 'k', lw = 1)
-    ax.axvline(np.log(3/2)/np.log(2), linestyle=":", color = 'k', lw = 1)
+    ax.set_ylim(-0.02 * k_sym_N3(gamma_max, kappa) / 0.25,
+                1.05 * max(k_brk_N3(gamma_min, kappa), k_sym_N3(gamma_max, kappa)))
+    ax.axvline(1.0, linestyle="dashdot", color='k', lw=guide_lw)
+    ax.axvline(np.log(3/2)/np.log(2), linestyle=":", color='k', lw=guide_lw)
 
     return ax
+
+# === Merged ring figure (old Figures 2, 3 and 4) ===
+
+GAMMA_C_N3 = np.log(3.0 / 2.0) / np.log(2.0)  # exchange of global minima, ~0.585
+GAMMA_B_N3 = 1.0                              # bifurcation of the broken branch
+
+
+def stretched_xlim(x1, x2, f1, f2):
+    """Return (xmin, xmax) placing data value x1 at axes fraction f1 and x2 at f2."""
+    span = (x2 - x1) / (f2 - f1)
+    xmin = x1 - f1 * span
+    return xmin, xmin + span
+
 
 # === Figure 5 ===
 
 def save_phase_data(N, capacity_values, branch_labels, beta_values, gamma_values):
+    # imported here so that the ring figures do not require pandas
+    import pandas as pd
+
     df_cap = pd.DataFrame(capacity_values, index=beta_values, columns=gamma_values)
     df_cap.to_csv(f"capacity_values_N{N}.csv")
     df_branch = pd.DataFrame(branch_labels, index=beta_values, columns=gamma_values)
@@ -313,8 +387,14 @@ def plot_capacity_values(capacity_values, N, beta_values, gamma_values, label, s
     return fig, ax
 
 
-def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8):
-    """Draw a weighted 4-, 6-, or 8-node ring inset on an existing axis."""
+def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8, lw_scale=1.0):
+    """Draw a weighted 4-, 6-, or 8-node ring inset on an existing axis.
+
+    Edge widths follow the quantised rule floor(1 + edge_scale * k/k_max),
+    multiplied by lw_scale. The rule is kept as-is so the insets keep their
+    original look; lw_scale exists only to bring the resulting point widths down
+    when the figure is drawn at true printed size rather than oversized.
+    """
 
     num_nodes = G.number_of_nodes()
 
@@ -372,7 +452,8 @@ def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8):
         if ew <= 1e-9:
             continue
 
-        lw = np.floor(1 + edge_scale * ew / ew_max)
+        lw = np.floor(1 + edge_scale * ew / ew_max) * lw_scale
+
         ax.plot([x1, x2], [y1, y2], linewidth=lw, color=color, zorder=0)
 
     for u in G.nodes():
@@ -385,7 +466,7 @@ def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8):
     ax.set_aspect("equal")
     ax.axis("off")
 
-def draw_weighted_network_on_ax(G, ax, pos, color="black", edge_scale=8, node_size=120):
+def draw_weighted_network_on_ax(G, ax, pos, color="black", edge_scale=8, node_size=120, lw_scale=0.5):
     """Draw a weighted network with prescribed node positions on an existing axis."""
     ew_max = max([G.edges[u, v]["weight"] for u, v in G.edges()])
     if ew_max <= 0:
@@ -401,7 +482,7 @@ def draw_weighted_network_on_ax(G, ax, pos, color="black", edge_scale=8, node_si
         x1, y1 = pos[u]
         x2, y2 = pos[v]
 
-        lw = np.floor(1 + edge_scale * ew / ew_max) * 0.5
+        lw = np.floor(1 + edge_scale * ew / ew_max) * lw_scale
         ax.plot([x1, x2], [y1, y2], linewidth=float(lw), color=color, zorder=0)
 
     for u in G.nodes():
