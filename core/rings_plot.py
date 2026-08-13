@@ -317,8 +317,8 @@ def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500,
     ax.set_xlabel(r"$\gamma$")
     ax.set_ylabel(r"$k_e^\ast$")
 
-    ax.plot([], [], color=color_brk, lw=lw, label="symmetry-broken")
-    ax.plot([], [], color=color_sym, lw=lw, label="symmetric")
+    ax.plot([], [], color=color_brk, lw=lw, label="Symmetry-broken")
+    ax.plot([], [], color=color_sym, lw=lw, label="Symmetric")
 
     ax.legend(frameon=True, loc=legend_loc, fontsize=legend_fontsize)
 
@@ -354,15 +354,27 @@ def save_phase_data(N, capacity_values, branch_labels, beta_values, gamma_values
     df_branch = pd.DataFrame(branch_labels, index=beta_values, columns=gamma_values)
     df_branch.to_csv(f"branch_labels_N{N}.csv")
 
-def plot_capacity_values(capacity_values, N, beta_values, gamma_values, label, savefig = False):
-    """Plot the ring phase diagram using the minimum edge capacity as the displayed observable."""
-    fig, ax = plt.subplots(figsize=(12, 10))
-    im = ax.imshow(capacity_values, aspect='auto', origin='lower', 
+def plot_capacity_values(capacity_values, N, beta_values, gamma_values, label=None, savefig=False,
+                         ax=None, cax=None, fontsize=None, label_above=False, N_label_xy=(0.62, 0.96)):
+    """Plot the ring phase diagram using the minimum edge capacity as the displayed observable.
+
+    Pass ax (and optionally cax) to draw into an existing figure, which is what
+    the merged figure does. With label_above=True the colour bar is titled above
+    the bar rather than alongside it, keeping it clear of the next panel's
+    y-axis label. The panel letter is not drawn here: in a composed figure it is
+    positioned in figure coordinates alongside all the others.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 10))
+        if fontsize is None:
+            fontsize = 35
+    else:
+        fig = ax.get_figure()
+
+    im = ax.imshow(capacity_values, aspect='auto', origin='lower', interpolation='nearest',
             extent=[gamma_values[0], gamma_values[-1], beta_values[0], beta_values[-1]], cmap='viridis')
-    
-    cbar = fig.colorbar(im, ax=ax, label=r'$min_e(K_e)$')
-    cbar.ax.tick_params(labelsize=35)  
-    cbar.set_label(r'$\min _e(k^*_e)$', fontsize=35) 
+
+    cbar = fig.colorbar(im, cax=cax) if cax is not None else fig.colorbar(im, ax=ax)
 
     formatter = ScalarFormatterOneDecimal(useMathText=True)
     formatter.set_powerlimits((0, 0))   # always scientific notation
@@ -370,18 +382,37 @@ def plot_capacity_values(capacity_values, N, beta_values, gamma_values, label, s
     cbar.update_ticks()
     fig.canvas.draw()
 
-    cbar.ax.tick_params(labelsize=35)
+    cbar_label = r'$\min_e(k^*_e)$'
+    cbar.ax.tick_params(labelsize=fontsize)
     offset = cbar.ax.yaxis.get_offset_text()
-    offset.set_size(35)
-    offset.set_x(3)
+    if fontsize is not None:
+        offset.set_size(fontsize)
 
-    ax.set_xlabel(r'$\gamma$', fontsize=35)
-    ax.set_ylabel(r'$\beta$', fontsize=35)
-    ax.tick_params(axis='both', labelsize=35) 
+    if label_above:
+        # The offset text ("x10^-1") is drawn at the top of the bar, which is
+        # where the title goes, so merge the two and hide the original.
+        offset_text = offset.get_text()
+        offset.set_visible(False)
+        title = cbar_label if not offset_text else f"{cbar_label} {offset_text}"
+        cbar.ax.set_title(title, fontsize=fontsize, pad=3)
+    else:
+        cbar.set_label(cbar_label, fontsize=fontsize)
+        if cax is None:
+            offset.set_x(3)      # legacy nudge, only sensible on the standalone figure
 
-    ax.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=35, color='black', ha='left', va='top')
-    ax.annotate(rf'$N={N}$', xy=(0.6, 0.85), xycoords='figure fraction', fontsize=35, color='black', ha='left', va='top')
-    if savefig == True:
+    ax.set_xlabel(r'$\gamma$', fontsize=fontsize)
+    ax.set_ylabel(r'$\beta$', fontsize=fontsize)
+    ax.tick_params(axis='both', labelsize=fontsize)
+
+    if N_label_xy is None:
+        ax.set_title(rf'$N={N}$', fontsize=fontsize, pad=3)
+    else:
+        ax.text(N_label_xy[0], N_label_xy[1], rf'$N={N}$', transform=ax.transAxes,
+                fontsize=fontsize, color='white', ha='left', va='top')
+
+    if label is not None and cax is None:
+        ax.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=fontsize, color='black', ha='left', va='top')
+    if savefig:
         fig.savefig(f"capacity_phase_N{N}.pdf", bbox_inches="tight")
 
     return fig, ax
@@ -521,7 +552,7 @@ def build_optimized_ring_graph(N, beta, gamma, mu, threshold=1e-9):
 
     return Gres, k_min, D_min
 
-def add_network_inset(ax, G, beta, gamma, size=0.25, color="white"):
+def add_network_inset(ax, G, beta, gamma, size=0.25, color="white", node_size=500, lw_scale=1.0):
     """Add a ring-network inset centered at the data point (gamma, beta)."""    
     # Convert data -> axis coordinates
     x_ax, y_ax = ax.transAxes.inverted().transform(ax.transData.transform((gamma, beta)))
@@ -531,7 +562,7 @@ def add_network_inset(ax, G, beta, gamma, size=0.25, color="white"):
 
     axins = ax.inset_axes(rect)
 
-    draw_ring_inset(G, axins, color=color)
+    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale)
 
     return axins
 
@@ -560,11 +591,23 @@ def plot_phase_with_insets(N, mu, gamma_values, beta_values, capacity_values, in
 
 # === Figure 5 d, e
 
-def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label):
-    """Plot minimum capacities versus gamma for selected beta values, marking branch changes."""
-    fig, ax = plt.subplots(figsize=(12, 10))
-    cmap = plt.cm.viridis
-    colors = cmap(np.linspace(0, 1, len(fixed_beta)))
+def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label=None,
+                            ax=None, fontsize=None, lw=2.0, jump_lw=1.8, colors=None,
+                            legend_loc='best'):
+    """Plot minimum capacities versus gamma for selected beta values, marking branch changes.
+
+    Pass ax to draw into an existing figure. colors overrides the default
+    viridis sampling, which for a single curve picks an arbitrary dark purple.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 10))
+        if fontsize is None:
+            fontsize = 35
+    else:
+        fig = ax.get_figure()
+
+    if colors is None:
+        colors = plt.cm.viridis(np.linspace(0, 1, len(fixed_beta)))
 
     all_jump_positions = []
 
@@ -590,27 +633,40 @@ def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label
         for j in change_idx:
             y_plot[j + 1] = np.nan
 
-        ax.plot(gamma_values, y_plot, color=colors[c], lw=2, label=rf'$\beta = {beta}$')
+        ax.plot(gamma_values, y_plot, color=colors[c], lw=lw, label=rf'$\beta = {beta}$')
 
         # Draw dashed vertical lines at actual branch transitions
         for xj in jump_positions:
-            ax.axvline(x=xj, color="black", lw=1.8, ls="--", zorder=0)
+            ax.axvline(x=xj, color="black", lw=jump_lw, ls="--", zorder=0)
+        all_jump_positions.append(jump_positions)
 
-    ax.set_xlabel(r'$\gamma$', fontsize=35)
-    ax.set_ylabel(r'$\min_e(k^*_e)$', fontsize=35)
-    ax.tick_params(axis='both', labelsize=35)
-    ax.legend(loc='best', fontsize=30)
+    ax.set_xlabel(r'$\gamma$', fontsize=fontsize)
+    ax.set_ylabel(r'$\min_e(k^*_e)$', fontsize=fontsize)
+    ax.tick_params(axis='both', labelsize=fontsize)
+    ax.legend(loc=legend_loc, fontsize=fontsize)
 
-    plt.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=35, color='black', ha='left', va='top')
+    if label is not None:
+        plt.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=fontsize, color='black', ha='left', va='top')
 
     return fig, ax, all_jump_positions
 
 
-def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, label):
-    """Plot minimum capacities versus beta for selected gamma values, marking branch changes."""
-    fig, ax = plt.subplots(figsize=(24, 10))
-    cmap = plt.cm.viridis
-    colors = cmap(np.linspace(0, 1, len(fixed_gamma)))
+def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, label=None,
+                             ax=None, fontsize=None, lw=2.0, jump_lw=2.0, colors=None,
+                             legend_loc='lower center'):
+    """Plot minimum capacities versus beta for selected gamma values, marking branch changes.
+
+    Pass ax to draw into an existing figure.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(24, 10))
+        if fontsize is None:
+            fontsize = 35
+    else:
+        fig = ax.get_figure()
+
+    if colors is None:
+        colors = plt.cm.viridis(np.linspace(0, 1, len(fixed_gamma)))
 
     all_jump_positions = []
 
@@ -636,22 +692,23 @@ def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, labe
         for j in change_idx:
             y_plot[j + 1] = np.nan
 
-        ax.plot(beta_values, y_plot, color=colors[c], lw=2, label=rf'$\gamma = {gamma}$')
+        ax.plot(beta_values, y_plot, color=colors[c], lw=lw, label=rf'$\gamma = {gamma}$')
 
         # Draw one dashed vertical line per actual branch transition
         for xj in jump_positions:
-            ax.axvline(x=xj, color="black", lw=2, ls="--", zorder=0)
+            ax.axvline(x=xj, color="black", lw=jump_lw, ls="--", zorder=0)
 
-    ax.set_xlabel(r'$\beta$', fontsize=35)
-    ax.set_ylabel(r'$\min_e(k^*_e)$', fontsize=35)
-    ax.tick_params(axis='both', labelsize=35)
-    ax.legend(loc='lower center', fontsize=30)
+    ax.set_xlabel(r'$\beta$', fontsize=fontsize)
+    ax.set_ylabel(r'$\min_e(k^*_e)$', fontsize=fontsize)
+    ax.tick_params(axis='both', labelsize=fontsize)
+    ax.legend(loc=legend_loc, fontsize=fontsize)
 
-    plt.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=35, color='black', ha='left', va='top')
+    if label is not None:
+        plt.annotate(f'{label}', xy=(0.0, 0.93), xycoords='figure fraction', fontsize=fontsize, color='black', ha='left', va='top')
 
     return fig, ax
 
-def add_network_inset_xy(ax, G, x, y, size=0.25, color="white"):
+def add_network_inset_xy(ax, G, x, y, size=0.25, color="white", node_size=500, lw_scale=1.0):
     """Add a ring-network inset centered at generic data coordinates (x, y)."""
     # convert data -> axis coordinates
     x_ax, y_ax = ax.transAxes.inverted().transform(ax.transData.transform((x, y)))
@@ -659,6 +716,6 @@ def add_network_inset_xy(ax, G, x, y, size=0.25, color="white"):
     rect = [x_ax - size/2, y_ax - size/2, size, size]
     axins = ax.inset_axes(rect)
 
-    draw_ring_inset(G, axins, color=color)
+    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale)
 
     return axins
