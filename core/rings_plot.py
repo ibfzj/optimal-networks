@@ -593,7 +593,7 @@ def plot_phase_with_insets(N, mu, gamma_values, beta_values, capacity_values, in
 
 def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label=None,
                             ax=None, fontsize=None, lw=2.0, jump_lw=1.8, colors=None,
-                            legend_loc='best'):
+                            legend_loc='best', jump_positions=None, break_at_changes=True, break_positions=None):
     """Plot minimum capacities versus gamma for selected beta values, marking branch changes.
 
     Pass ax to draw into an existing figure. colors overrides the default
@@ -625,20 +625,33 @@ def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label
 
         # Detect true branch changes
         change_idx = np.where(labels_smooth[:-1] != labels_smooth[1:])[0]
-        jump_positions = 0.5 * (gamma_values[change_idx] + gamma_values[change_idx + 1])
-        jump_positions = jump_positions[:2]    
+        if jump_positions is None:
+            jp = 0.5 * (gamma_values[change_idx] + gamma_values[change_idx + 1])
+            jp = jp[:2]
+        else:
+            jp = np.asarray(jump_positions, dtype=float)
 
         # Break the colored curve at jumps
         y_plot = y.copy()
-        for j in change_idx:
-            y_plot[j + 1] = np.nan
+        if break_positions is not None:
+            # split only at genuine discontinuities, so the curve is not drawn
+            # with a vertical connector across a jump
+            for xb in np.asarray(break_positions, dtype=float):
+                # first sample past the boundary; blanking it drops the segment
+                # that would otherwise join the two branches vertically
+                k = int(np.searchsorted(np.asarray(gamma_values), xb))
+                if 0 < k < len(y_plot):
+                    y_plot[k] = np.nan
+        elif break_at_changes:
+            for j in change_idx:
+                y_plot[j + 1] = np.nan
 
         ax.plot(gamma_values, y_plot, color=colors[c], lw=lw, label=rf'$\beta = {beta}$')
 
         # Draw dashed vertical lines at actual branch transitions
-        for xj in jump_positions:
+        for xj in jp:
             ax.axvline(x=xj, color="black", lw=jump_lw, ls="--", zorder=0)
-        all_jump_positions.append(jump_positions)
+        all_jump_positions.append(jp)
 
     ax.set_xlabel(r'$\gamma$', fontsize=fontsize)
     ax.set_ylabel(r'$\min_e(k^*_e)$', fontsize=fontsize)
@@ -653,7 +666,7 @@ def plot_curves_fixed_betas(fixed_beta, gamma_values, minK, branch_labels, label
 
 def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, label=None,
                              ax=None, fontsize=None, lw=2.0, jump_lw=2.0, colors=None,
-                             legend_loc='lower center'):
+                             legend_loc='lower center', jump_positions=None, break_at_changes=True, break_positions=None):
     """Plot minimum capacities versus beta for selected gamma values, marking branch changes.
 
     Pass ax to draw into an existing figure.
@@ -684,18 +697,31 @@ def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, labe
 
         # Detect true branch changes
         change_idx = np.where(labels_smooth[:-1] != labels_smooth[1:])[0]
-        jump_positions = 0.5 * (beta_values[change_idx] + beta_values[change_idx + 1])
-        jump_positions = np.array([jump_positions[0], jump_positions[1], jump_positions[-2], jump_positions[-1]])
+        if jump_positions is None:
+            jp = 0.5 * (beta_values[change_idx] + beta_values[change_idx + 1])
+            jp = np.array([jp[0], jp[1], jp[-2], jp[-1]])
+        else:
+            jp = np.asarray(jump_positions, dtype=float)
 
         # Break the curve at jumps
         y_plot = y.copy()
-        for j in change_idx:
-            y_plot[j + 1] = np.nan
+        if break_positions is not None:
+            # split only at genuine discontinuities, so the curve is not drawn
+            # with a vertical connector across a jump
+            for xb in np.asarray(break_positions, dtype=float):
+                # first sample past the boundary; blanking it drops the segment
+                # that would otherwise join the two branches vertically
+                k = int(np.searchsorted(np.asarray(beta_values), xb))
+                if 0 < k < len(y_plot):
+                    y_plot[k] = np.nan
+        elif break_at_changes:
+            for j in change_idx:
+                y_plot[j + 1] = np.nan
 
         ax.plot(beta_values, y_plot, color=colors[c], lw=lw, label=rf'$\gamma = {gamma}$')
 
         # Draw one dashed vertical line per actual branch transition
-        for xj in jump_positions:
+        for xj in jp:
             ax.axvline(x=xj, color="black", lw=jump_lw, ls="--", zorder=0)
 
     ax.set_xlabel(r'$\beta$', fontsize=fontsize)
