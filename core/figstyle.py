@@ -105,7 +105,9 @@ RC = {
     "ytick.major.pad": 1.8,
     "axes.labelpad": 1.8,
 
-    "legend.frameon": True,
+    # frameless everywhere: legends are placed in empty regions, and a box
+    # would be the only inconsistency against the panels that have none
+    "legend.frameon": False,
     "legend.framealpha": 1.0,
     "legend.edgecolor": "0.5",
     "legend.borderpad": 0.3,

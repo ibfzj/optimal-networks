@@ -59,7 +59,8 @@ def mark_minima(ax, x, y, rtol=1e-10, s_circle=220, s_cross=140, lw=1.0):
 
 
 def plot_dissipation_N2(gammas, mu=0.0, beta=0.1, kappa=1.0, ax=None, legend_elements=None,
-                        lw=2.0, s_circle=220, s_cross=140, marker_lw=1.0, legend_loc="center"):
+                        lw=2.0, s_circle=220, s_cross=140, marker_lw=1.0, legend_loc="center",
+                        legend_ncol=1):
     """Plot the N=2 dissipation as a function of the reduced variable a for selected gamma values."""
     colors = ["#003366", "#E69F00"]
     if ax is None:
@@ -80,7 +81,10 @@ def plot_dissipation_N2(gammas, mu=0.0, beta=0.1, kappa=1.0, ax=None, legend_ele
 
     if legend_elements is not None:
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles + legend_elements, labels + ['Local min', 'Global min'], loc=legend_loc)
+        # take the labels from the proxy artists rather than hardcoding them,
+        # so the caller controls the wording
+        ax.legend(handles + legend_elements,
+                  labels + [h.get_label() for h in legend_elements], loc=legend_loc, ncol=legend_ncol)
     else:
         ax.legend(loc='upper right')
 
@@ -165,7 +169,7 @@ def plot_Figure3(gamma, mu, beta, kappa=1.0, grid=260, ax=None, cax=None,
                    extent=[a_vals[0], a_vals[-1], b_vals[0], b_vals[-1]])
 
     # "ln" is a multi-letter function, so it must be roman rather than italic.
-    cbar_label = r"$\ln(\bar D)$"
+    cbar_label = r"$\ln \bar D$"
     fig = ax.get_figure()
 
     if cax is not None:
@@ -320,7 +324,7 @@ def plot_Figure4(ax=None, kappa=1.0, gamma_min=0.32, gamma_max=1.3, n=500,
     ax.plot([], [], color=color_brk, lw=lw, label="Symmetry-broken")
     ax.plot([], [], color=color_sym, lw=lw, label="Symmetric")
 
-    ax.legend(frameon=True, loc=legend_loc, fontsize=legend_fontsize)
+    ax.legend(loc=legend_loc, fontsize=legend_fontsize)
 
     ax.set_xlim(gamma_min, gamma_max)
     ax.set_ylim(-0.02 * k_sym_N3(gamma_max, kappa) / 0.25,
@@ -418,7 +422,7 @@ def plot_capacity_values(capacity_values, N, beta_values, gamma_values, label=No
     return fig, ax
 
 
-def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8, lw_scale=1.0):
+def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8, lw_scale=1.0, bg=None):
     """Draw a weighted 4-, 6-, or 8-node ring inset on an existing axis.
 
     Edge widths follow the quantised rule floor(1 + edge_scale * k/k_max),
@@ -490,12 +494,20 @@ def draw_ring_inset(G, ax, color="white", node_size=500, edge_scale=8, lw_scale=
     for u in G.nodes():
         x, y = pos[u]
         marker = "s" if u % 2 == 0 else "o"
-        ax.scatter(x, y, marker=marker, s=node_size, c=color, zorder=10)
+        ax.scatter(x, y, marker=marker, s=node_size, c=color, zorder=10, clip_on=False)
 
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
     ax.set_aspect("equal")
-    ax.axis("off")
+    if bg is None:
+        ax.axis("off")
+    else:
+        # keep the patch so the inset masks whatever it sits on, but drop every
+        # axis decoration; used where an inset has to overlap a guide line
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.set_facecolor(bg)
 
 def draw_weighted_network_on_ax(G, ax, pos, color="black", edge_scale=8, node_size=120, lw_scale=0.5):
     """Draw a weighted network with prescribed node positions on an existing axis."""
@@ -519,7 +531,7 @@ def draw_weighted_network_on_ax(G, ax, pos, color="black", edge_scale=8, node_si
     for u in G.nodes():
         x, y = pos[u]
         marker = "s" if u % 2 == 0 else "o"
-        ax.scatter(x, y, marker=marker, s=node_size, c=color, zorder=10)
+        ax.scatter(x, y, marker=marker, s=node_size, c=color, zorder=10, clip_on=False)
 
     ax.set_xlim(-0.2, 0.2)
     ax.set_ylim(-0.2, 0.2)
@@ -552,7 +564,7 @@ def build_optimized_ring_graph(N, beta, gamma, mu, threshold=1e-9):
 
     return Gres, k_min, D_min
 
-def add_network_inset(ax, G, beta, gamma, size=0.25, color="white", node_size=500, lw_scale=1.0):
+def add_network_inset(ax, G, beta, gamma, size=0.25, color="white", node_size=500, lw_scale=1.0, bg=None):
     """Add a ring-network inset centered at the data point (gamma, beta)."""    
     # Convert data -> axis coordinates
     x_ax, y_ax = ax.transAxes.inverted().transform(ax.transData.transform((gamma, beta)))
@@ -562,7 +574,7 @@ def add_network_inset(ax, G, beta, gamma, size=0.25, color="white", node_size=50
 
     axins = ax.inset_axes(rect)
 
-    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale)
+    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale, bg=bg)
 
     return axins
 
@@ -734,7 +746,7 @@ def plot_curves_fixed_gammas(beta_values, fixed_gamma, minK, branch_labels, labe
 
     return fig, ax
 
-def add_network_inset_xy(ax, G, x, y, size=0.25, color="white", node_size=500, lw_scale=1.0):
+def add_network_inset_xy(ax, G, x, y, size=0.25, color="white", node_size=500, lw_scale=1.0, bg=None):
     """Add a ring-network inset centered at generic data coordinates (x, y)."""
     # convert data -> axis coordinates
     x_ax, y_ax = ax.transAxes.inverted().transform(ax.transData.transform((x, y)))
@@ -742,6 +754,6 @@ def add_network_inset_xy(ax, G, x, y, size=0.25, color="white", node_size=500, l
     rect = [x_ax - size/2, y_ax - size/2, size, size]
     axins = ax.inset_axes(rect)
 
-    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale)
+    draw_ring_inset(G, axins, color=color, node_size=node_size, lw_scale=lw_scale, bg=bg)
 
     return axins
